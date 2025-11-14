@@ -7,7 +7,7 @@ from fastapi.security import OAuth2PasswordRequestForm
 from pydantic import BaseModel
 from typing import Optional
 from .models import ApiResponse, PlanningResult, ErrorInfo
-from .workflow import workflow_run, continue_workflow
+from .workflow import workflow_run, continue_workflow, orchestrate_parallel
 from .intent import intent_parse, intent_generate_questions, intent_apply_answers, intent_find_gaps
 from .logger import log_info, log_error, new_trace_id
 import time
@@ -123,6 +123,44 @@ def post_plan(req: PlanRequest, _: bool = Depends(require_auth)):
     try:
         result = continue_workflow(intent, req.session_id)
         log_info("workflow", "completed", session_id=req.session_id, trace_id=trace_id, extra={"latency_ms": int((time.time()-start_ts)*1000)})
+        cache_put(intent, result)
+        return ApiResponse(success=True, data=result)
+    except DomainError as de:
+        log_error("workflow", de.message, session_id=req.session_id, code=de.code, trace_id=trace_id)
+        return ApiResponse(success=False, error=ErrorInfo(code=de.code, message=de.message, detail=de.detail))
+
+@app.post("/api/mvp/plan_v2", response_model=ApiResponse)
+async def post_plan_v2(req: PlanRequest, _: bool = Depends(require_auth)):
+    """Parallel variant using orchestrate_parallel (flights+hotels)."""
+    trace_id = new_trace_id()
+    start_ts = time.time()
+    log_info("api", "plan_v2_request", session_id=req.session_id, trace_id=trace_id)
+    METRICS.inc_plan()
+    if not rate_limit_allow(req.session_id):
+        log_error("rate_limit", "exceeded", session_id=req.session_id, code="RATE_LIMIT_EXCEEDED", trace_id=trace_id)
+        return ApiResponse(success=False, error=ErrorInfo(code="RATE_LIMIT_EXCEEDED", message="Too many requests"))
+    try:
+        intent = intent_parse(req.text, req.session_id)
+        log_info("api", "intent_parsed", session_id=req.session_id, trace_id=trace_id, extra={
+            "destination": intent.destination,
+            "days": intent.days,
+            "budget_total": intent.budget_total,
+            "depart_date": str(intent.depart_date) if intent.depart_date else None,
+        })
+    except DomainError as de:
+        log_error("intent_parse", de.message, session_id=req.session_id, code=de.code, trace_id=trace_id)
+        return ApiResponse(success=False, error=ErrorInfo(code=de.code, message=de.message))
+    gaps = intent_find_gaps(intent)
+    if gaps:
+        questions = intent_generate_questions(gaps)
+        METRICS.inc_clarify_session()
+        METRICS.add_clarify_questions(len(questions))
+        _STORE.create(req.session_id, {"intent": intent, "gaps": gaps, "round": 1, "max_rounds": 2})
+        log_info("clarify", "questions", session_id=req.session_id, trace_id=trace_id, extra={"count": len(questions), "variant": "v2"})
+        return ApiResponse(success=False, mode="clarify", questions=questions, round=1, max_rounds=2)
+    try:
+        result = await orchestrate_parallel(intent, req.session_id)
+        log_info("workflow", "completed_v2", session_id=req.session_id, trace_id=trace_id, extra={"latency_ms": int((time.time()-start_ts)*1000)})
         cache_put(intent, result)
         return ApiResponse(success=True, data=result)
     except DomainError as de:

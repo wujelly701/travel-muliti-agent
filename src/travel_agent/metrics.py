@@ -120,4 +120,17 @@ class Metrics:
 
 METRICS = Metrics()
 
-__all__ = ["METRICS"]
+class _ParallelMetrics:
+    def __init__(self):
+        self._lock = Lock()
+        self.parallel_runs = 0
+    def inc_parallel(self):
+        with self._lock:
+            self.parallel_runs += 1
+    def snapshot(self):
+        with self._lock:
+            return {"parallel_runs": self.parallel_runs}
+
+METRICS_PARALLEL = _ParallelMetrics()
+
+__all__ = ["METRICS", "METRICS_PARALLEL"]
