@@ -1,0 +1,43 @@
+# Python / build artifacts
+__pycache__/
+*.pyc
+*.pyo
+*.pyd
+*.sqlite3
+
+# Virtual environment
+.venv/
+
+# Test / coverage
+.pytest_cache/
+htmlcov/
+.coverage*
+
+# IDE/editor
+.vscode/
+*.code-workspace
+
+# Logs & temp
+*.log
+/tmp/
+
+# Env files
+.env
+.env.*
+
+# Node / front-end (future)
+node_modules/
+
+# Docker
+*.tar
+
+# Project-specific exclusions (do not push internal docs or summaries)
+开发文档/
+COMPLETION_SUMMARY.md
+
+# Generated artifacts
+signatures.json
+
+# OS
+Thumbs.db
+.DS_Store

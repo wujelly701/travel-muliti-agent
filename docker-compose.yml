@@ -1,0 +1,25 @@
+version: '3.9'
+services:
+  app:
+    build: .
+    container_name: travel-agent-app
+    ports:
+      - "8000:8000"
+    environment:
+      - PYTHONUNBUFFERED=1
+      - PYTHONPATH=src
+      - CLARIFY_MAX_ROUNDS=3
+      - RATE_LIMIT_REQUESTS_PER_MIN=30
+      - RATE_LIMIT_WINDOW_SECONDS=60
+      # Uncomment and set real keys when using external LLMs
+      # - OPENAI_API_KEY=${OPENAI_API_KEY}
+      # - DEEPSEEK_API_KEY=${DEEPSEEK_API_KEY}
+      # - REDIS_URL=redis://redis:6379/0
+    depends_on:
+      - redis
+  redis:
+    image: redis:7-alpine
+    container_name: travel-agent-redis
+    ports:
+      - "6379:6379"
+    command: ["redis-server", "--save", "", "--appendonly", "no"]
