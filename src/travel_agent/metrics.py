@@ -133,4 +133,17 @@ class _ParallelMetrics:
 
 METRICS_PARALLEL = _ParallelMetrics()
 
-__all__ = ["METRICS", "METRICS_PARALLEL"]
+class _GraphMetrics:
+    def __init__(self):
+        self._lock = Lock()
+        self.graph_runs = 0
+    def inc(self):
+        with self._lock:
+            self.graph_runs += 1
+    def snapshot(self):
+        with self._lock:
+            return {"graph_runs": self.graph_runs}
+
+METRICS_GRAPH = _GraphMetrics()
+
+__all__ = ["METRICS", "METRICS_PARALLEL", "METRICS_GRAPH"]

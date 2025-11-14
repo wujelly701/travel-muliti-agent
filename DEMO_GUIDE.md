@@ -265,6 +265,8 @@ Invoke-RestMethod -Uri "http://127.0.0.1:8000/api/mvp/plan" -Method Post -Body $
 - ✅ 错误追踪与 LLM 调用审计
 - ✅ API Key 认证（可选） + JWT/OAuth2 简易令牌（可选）
 - ✅ Debug 端点：`/api/mvp/debug/intent` 查看解析结果与 gaps
+- ✅ 并行端点：`/api/mvp/plan_v2` 使用 asyncio 并行航班+酒店
+- ✅ 图调度端点：`/api/mvp/plan_v3` 使用 LangGraph 节点编排（航班/酒店并行 → 景点 → 行程 → 预算）
 
 ### 新增认证说明
 当设置环境变量：
@@ -282,6 +284,9 @@ Docker 中设置 `USE_GUNICORN=1` 会使用 `gunicorn -c gunicorn.conf.py` 启�
 
 ### .env 自动加载
 已集成 `python-dotenv`，在项目根目录放置 `.env` 文件即可自动加载配置（无需在启动脚本中手动导出）。
+
+### LangGraph 图调度说明
+`/api/mvp/plan_v3` 利用 LangGraph 构建节点：`flights`, `hotels` 并行 → `spots` → `itinerary` → `budget`，若运行环境缺少依赖或异常则自动回退到串行/并行逻辑。指标中新增 `graph_runs` 计数。
 - ✅ 结果缓存（intent 哈希）
 - ✅ 限流控制（滑动窗口）
 - ✅ 指标收集（内部计数器 + Prometheus）

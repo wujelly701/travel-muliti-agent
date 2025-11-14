@@ -8,6 +8,7 @@ from pydantic import BaseModel
 from typing import Optional
 from .models import ApiResponse, PlanningResult, ErrorInfo
 from .workflow import workflow_run, continue_workflow, orchestrate_parallel
+from .graph_workflow import run_graph
 from .intent import intent_parse, intent_generate_questions, intent_apply_answers, intent_find_gaps
 from .logger import log_info, log_error, new_trace_id
 import time
@@ -219,7 +220,10 @@ def health():
 @app.get("/api/mvp/metrics")
 @app.get("/metrics")
 def metrics():
-    return METRICS.snapshot()
+    base = METRICS.snapshot()
+    from .metrics import METRICS_PARALLEL, METRICS_GRAPH
+    base.update({"parallel_runs": METRICS_PARALLEL.snapshot()["parallel_runs"], "graph_runs": METRICS_GRAPH.snapshot()["graph_runs"]})
+    return base
 
 @app.get("/api/mvp/prom_metrics")
 @app.get("/metrics_prom")
@@ -267,3 +271,37 @@ def debug_intent(req: DebugIntentRequest, _: bool = Depends(require_auth)):
     intent = intent_parse(req.text, req.session_id)
     gaps = intent_find_gaps(intent)
     return {"intent": intent.model_dump(), "gaps": gaps}
+
+@app.post("/api/mvp/plan_v3", response_model=ApiResponse)
+def post_plan_v3(req: PlanRequest, _: bool = Depends(require_auth)):
+    """LangGraph graph orchestration variant. Falls back to parallel if graph unavailable."""
+    trace_id = new_trace_id()
+    start_ts = time.time()
+    log_info("api", "plan_v3_request", session_id=req.session_id, trace_id=trace_id)
+    METRICS.inc_plan()
+    if not rate_limit_allow(req.session_id):
+        log_error("rate_limit", "exceeded", session_id=req.session_id, code="RATE_LIMIT_EXCEEDED", trace_id=trace_id)
+        return ApiResponse(success=False, error=ErrorInfo(code="RATE_LIMIT_EXCEEDED", message="Too many requests"))
+    try:
+        intent = intent_parse(req.text, req.session_id)
+    except DomainError as de:
+        log_error("intent_parse", de.message, session_id=req.session_id, code=de.code, trace_id=trace_id)
+        return ApiResponse(success=False, error=ErrorInfo(code=de.code, message=de.message))
+    gaps = intent_find_gaps(intent)
+    if gaps:
+        questions = intent_generate_questions(gaps)
+        METRICS.inc_clarify_session()
+        METRICS.add_clarify_questions(len(questions))
+        _STORE.create(req.session_id, {"intent": intent, "gaps": gaps, "round": 1, "max_rounds": 2})
+        return ApiResponse(success=False, mode="clarify", questions=questions, round=1, max_rounds=2)
+    try:
+        from .metrics import METRICS_GRAPH
+        result = run_graph(intent)
+        METRICS_GRAPH.inc()
+        log_info("workflow", "completed_v3_graph", session_id=req.session_id, trace_id=trace_id, extra={"latency_ms": int((time.time()-start_ts)*1000)})
+    except Exception:
+        # fallback to parallel orchestrator
+        log_error("workflow", "graph_unavailable_fallback", session_id=req.session_id, code="GRAPH_FALLBACK", trace_id=trace_id)
+        result = continue_workflow(intent, req.session_id)
+    cache_put(intent, result)
+    return ApiResponse(success=True, data=result)

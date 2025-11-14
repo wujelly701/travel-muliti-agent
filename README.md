@@ -68,6 +68,8 @@ pytest -q  # 21 passed, no warnings
 - `GET /llm_audit_recent` 最近 LLM 调用审计
 - `POST /api/mvp/debug/intent` 解析原始文本并返回意图与缺失字段
 - `POST /api/mvp/auth/token` 获取 JWT 访问令牌（在启用 JWT 时）
+- `POST /api/mvp/plan_v2` 并行航班+酒店（asyncio）
+- `POST /api/mvp/plan_v3` LangGraph 图调度（航班/酒店并行 → 景点 → 行程 → 预算）
 
 ## 配置 (环境变量)
 - `LLM_PRIMARY`, `LLM_FALLBACKS` comma list
@@ -134,6 +136,7 @@ Access: `http://localhost:8000/docs`
 ## 后续计划
 - 接入真实航班/酒店/景点 API
 - 引入 LangGraph 并行多 Agent 调度
+- 图执行状态与可视化（plan_v3 进一步扩展）
 - 增加 UGC 内容聚合与 RAG 检索
 - 完善多币种与预算动态建议
 - 安全增强（OAuth2 Scope、输入校验、风控）
