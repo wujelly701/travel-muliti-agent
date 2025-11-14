@@ -22,4 +22,7 @@ ENV PYTHONPATH=src \
 
 EXPOSE 8000
 
-CMD ["python", "-m", "uvicorn", "travel_agent.api:app", "--host", "0.0.0.0", "--port", "8000"]
+ARG USE_GUNICORN=1
+ENV USE_GUNICORN=${USE_GUNICORN}
+
+CMD ["/bin/sh", "-c", "if [ \"$USE_GUNICORN\" = \"1\" ]; then gunicorn -c gunicorn.conf.py travel_agent.api:app; else python -m uvicorn travel_agent.api:app --host 0.0.0.0 --port 8000; fi"]

@@ -3,6 +3,7 @@ Ref: §6 REST API 接口详细规格
 """
 from __future__ import annotations
 from fastapi import FastAPI, Depends, HTTPException, Response, Request
+from fastapi.security import OAuth2PasswordRequestForm
 from pydantic import BaseModel
 from typing import Optional
 from .models import ApiResponse, PlanningResult, ErrorInfo
@@ -13,6 +14,7 @@ import time
 from .models import TripIntent
 from .config import REDIS_URL
 from . import config as cfg
+import jwt, datetime
 from .session_store import create_session_store
 from .errors import DomainError
 from .metrics import METRICS
@@ -44,18 +46,39 @@ class DebugIntentRequest(BaseModel):
     session_id: str
     text: str
 
-def require_api_key(request: Request):
-    # Dynamic read of config value to allow tests to mutate cfg.API_KEY
+def require_auth(request: Request):
+    """Auth dependency supporting API Key OR JWT (when enabled).
+    Order:
+    1. If JWT_ENABLE true and Authorization Bearer valid -> ok.
+    2. Else if API_KEY configured and matches header -> ok.
+    3. Else if neither configured -> open mode.
+    4. Otherwise 401.
+    """
+    # JWT path
+    if cfg.JWT_ENABLE:
+        auth_header = request.headers.get("Authorization")
+        if auth_header and auth_header.lower().startswith("bearer "):
+            token = auth_header[7:].strip()
+            try:
+                payload = jwt.decode(token, cfg.AUTH_JWT_SECRET, algorithms=[cfg.AUTH_JWT_ALG])
+                # simple expiry + subject check
+                if "sub" not in payload:
+                    raise HTTPException(status_code=401, detail="Invalid token")
+                return True
+            except jwt.PyJWTError:
+                raise HTTPException(status_code=401, detail="Invalid or expired token")
+    # API key path
     api_key = cfg.API_KEY
-    if not api_key:
+    if api_key:
+        provided = request.headers.get("X-API-Key")
+        if provided != api_key:
+            raise HTTPException(status_code=401, detail="Invalid or missing API key")
         return True
-    provided = request.headers.get("X-API-Key")
-    if provided != api_key:
-        raise HTTPException(status_code=401, detail="Invalid or missing API key")
+    # Open mode
     return True
 
 @app.post("/api/mvp/plan", response_model=ApiResponse)
-def post_plan(req: PlanRequest, _: bool = Depends(require_api_key)):
+def post_plan(req: PlanRequest, _: bool = Depends(require_auth)):
     trace_id = new_trace_id()
     start_ts = time.time()
     log_info("api", "plan_request", session_id=req.session_id, trace_id=trace_id)
@@ -107,7 +130,7 @@ def post_plan(req: PlanRequest, _: bool = Depends(require_api_key)):
         return ApiResponse(success=False, error=ErrorInfo(code=de.code, message=de.message, detail=de.detail))
 
 @app.post("/api/mvp/plan/clarify", response_model=ApiResponse)
-def post_clarify(req: ClarifyRequest, _: bool = Depends(require_api_key)):
+def post_clarify(req: ClarifyRequest, _: bool = Depends(require_auth)):
     trace_id = new_trace_id()
     start_ts = time.time()
     sess = _STORE.get(req.session_id)
@@ -187,14 +210,22 @@ def list_routes():
             routes.append({"path": r.path, "methods": methods})
     return {"routes": routes, "count": len(routes)}
 
+@app.post("/api/mvp/auth/token")
+def issue_token(form: OAuth2PasswordRequestForm = Depends()):
+    if not cfg.JWT_ENABLE:
+        raise HTTPException(status_code=400, detail="JWT disabled")
+    if form.username != cfg.AUTH_DEMO_USER or form.password != cfg.AUTH_DEMO_PASSWORD:
+        raise HTTPException(status_code=401, detail="Bad credentials")
+    expire = datetime.datetime.utcnow() + datetime.timedelta(minutes=cfg.AUTH_JWT_EXPIRE_MIN)
+    payload = {"sub": form.username, "exp": expire}
+    token = jwt.encode(payload, cfg.AUTH_JWT_SECRET, algorithm=cfg.AUTH_JWT_ALG)
+    return {"access_token": token, "token_type": "bearer", "expires_in_minutes": cfg.AUTH_JWT_EXPIRE_MIN}
+
 @app.post("/api/mvp/debug/intent")
-def debug_intent(req: DebugIntentRequest, _: bool = Depends(require_api_key)):
+def debug_intent(req: DebugIntentRequest, _: bool = Depends(require_auth)):
     """Parse raw text and return intent object plus detected gaps.
     For debugging clarification behavior (origin now required).
     """
     intent = intent_parse(req.text, req.session_id)
     gaps = intent_find_gaps(intent)
-    return {
-        "intent": intent.model_dump(),
-        "gaps": gaps,
-    }
+    return {"intent": intent.model_dump(), "gaps": gaps}

@@ -3,6 +3,11 @@ Ref: §3.0 环境变量 + §3.1A Clarify settings
 """
 from __future__ import annotations
 import os
+try:  # optional .env auto loading
+    from dotenv import load_dotenv  # type: ignore
+    load_dotenv()
+except Exception:
+    pass
 from typing import List
 
 # Defaults per spec
@@ -37,6 +42,14 @@ RATE_LIMIT_REQUESTS_PER_MIN: int = int(os.getenv("RATE_LIMIT_REQUESTS_PER_MIN", 
 RATE_LIMIT_WINDOW_SECONDS: int = int(os.getenv("RATE_LIMIT_WINDOW_SECONDS", "60"))
 API_KEY: str | None = os.getenv("API_KEY")
 
+# JWT / OAuth2 (optional)
+JWT_ENABLE: bool = os.getenv("JWT_ENABLE", "false").lower() == "true"
+AUTH_JWT_SECRET: str = os.getenv("AUTH_JWT_SECRET", "dev-secret")
+AUTH_JWT_ALG: str = os.getenv("AUTH_JWT_ALG", "HS256")
+AUTH_JWT_EXPIRE_MIN: int = int(os.getenv("AUTH_JWT_EXPIRE_MIN", "30"))
+AUTH_DEMO_USER: str = os.getenv("AUTH_DEMO_USER", "demo")
+AUTH_DEMO_PASSWORD: str = os.getenv("AUTH_DEMO_PASSWORD", "demo123")
+
 __all__ += [
     "LLM_BASE_URL",
     "OPENAI_API_KEY",
@@ -46,4 +59,10 @@ __all__ += [
     "RATE_LIMIT_REQUESTS_PER_MIN",
     "RATE_LIMIT_WINDOW_SECONDS",
     "API_KEY",
+    "JWT_ENABLE",
+    "AUTH_JWT_SECRET",
+    "AUTH_JWT_ALG",
+    "AUTH_JWT_EXPIRE_MIN",
+    "AUTH_DEMO_USER",
+    "AUTH_DEMO_PASSWORD",
 ]

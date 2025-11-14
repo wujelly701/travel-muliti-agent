@@ -1,4 +1,4 @@
-# 旅行规划 Multi-Agent MVP - 启动与演示指南
+# 旅行规划 Multi-Agent MVP - 启动与演示指南（统一中文）
 
 ## 🚀 快速启动
 
@@ -7,7 +7,7 @@
 .\start_server.ps1
 ```
 
-### 方式二：手动启动
+### 方式二：手动启动（开发模式）
 ```powershell
 # 1. 激活虚拟环境
 .\.venv\Scripts\Activate.ps1
@@ -44,7 +44,7 @@ Invoke-RestMethod -Uri "http://127.0.0.1:8000/health" -Method Get
 
 ---
 
-### 2️⃣ 发起规划请求（信息不完整 - 触发澄清）
+### 2️⃣ 发起规划请求（信息不完整 → 触发澄清）
 ```powershell
 $planRequest = @{
     session_id = "demo_001"
@@ -254,10 +254,34 @@ Invoke-RestMethod -Uri "http://127.0.0.1:8000/api/mvp/plan" -Method Post -Body $
 ## 🎨 核心特性展示
 
 ### ✅ 已实现功能
-- ✅ 意图解析（正则提取 + 差距检测）
-- ✅ 多轮澄清（最多 3 轮）
+### 功能列表（当前版本）
+- ✅ 意图解析（正则提取 + 缺失字段检测，`origin` 必填）
+- ✅ 多轮澄清（最多 2 轮，缺失字段提问）
 - ✅ LLM 行程生成（fallback 链 + JSON 修复）
-- ✅ 预算分配 + 真实性警告
+- ✅ 预算分配 + 真实性警告（过低/过高）
+- ✅ 结果缓存（重复意图快速返回）
+- ✅ 限流（每会话窗口请求数）
+- ✅ Metrics + Prometheus 暴露
+- ✅ 错误追踪与 LLM 调用审计
+- ✅ API Key 认证（可选） + JWT/OAuth2 简易令牌（可选）
+- ✅ Debug 端点：`/api/mvp/debug/intent` 查看解析结果与 gaps
+
+### 新增认证说明
+当设置环境变量：
+```
+JWT_ENABLE=true
+AUTH_JWT_SECRET=自定义密钥
+```
+即可：
+1. 使用 `POST /api/mvp/auth/token` 获取 Bearer Token（默认 demo 账户）
+2. 在请求头添加：`Authorization: Bearer <token>` 访问规划端点。
+若同时设置 `API_KEY` 仍可使用 `X-API-Key` 方式。
+
+### Gunicorn 多进程（生产部署）
+Docker 中设置 `USE_GUNICORN=1` 会使用 `gunicorn -c gunicorn.conf.py` 启动，支持多 worker（默认 2，可通过 `GUNICORN_WORKERS` 调整）。
+
+### .env 自动加载
+已集成 `python-dotenv`，在项目根目录放置 `.env` 文件即可自动加载配置（无需在启动脚本中手动导出）。
 - ✅ 结果缓存（intent 哈希）
 - ✅ 限流控制（滑动窗口）
 - ✅ 指标收集（内部计数器 + Prometheus）
